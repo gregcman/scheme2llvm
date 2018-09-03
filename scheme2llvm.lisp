@@ -50,7 +50,7 @@
 
 (defparameter else t)
 (defun exit (code)
-  (error code))
+  (error "~s" code))
 
 ;;;;(begin
 
@@ -80,7 +80,7 @@
 (defun assignment? (exp)
   (tagged-list? exp 'set!))
 (defun definition? (exp)
-  (tagged-list? exp 'defun))
+  (tagged-list? exp 'define))
 (defun if? (exp)
   (tagged-list? exp 'if))
 (defun cond? (exp)
@@ -97,7 +97,7 @@
   (pair? exp))
 
 (defun llvm-definition? (exp)
-  (tagged-list? exp 'llvm-defun))
+  (tagged-list? exp 'llvm-define))
 (defun llvm-instruction? (exp)
   (assoc (operator exp)
 	 llvm-instructions))
