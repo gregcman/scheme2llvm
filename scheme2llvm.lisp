@@ -44,16 +44,26 @@
 ;;
 ;; -- The Implementation --
 
-(begin
+(defpackage #:scheme2llvm
+  (:use :cl :scheme2common-lisp))
+(in-package #:scheme2llvm)
 
-(define (length lst)
+(defparameter else t)
+(defun exit (code)
+  (error code))
+
+;;;;(begin
+
+(defun %length (lst)
   (cond 
     ((null? lst) 0)
-    (else (+ 1 (length (cdr lst))))))
+    (else (+ 1 (%length (cdr lst))))))
   
-(define (error func str)
-  (display func) (display " ") 
-  (display str) (newline)
+(defun %error (func str)
+  (display func)
+  (display " ") 
+  (display str)
+  (newline)
   (exit 1))
 
 ;; Abstract syntax
@@ -134,7 +144,7 @@
             (rest (cdr clauses)))
         (if (cond-else-clause? first)
             (if (null? rest) (sequence->exp (cond-actions first))
-                (error 'expand-clauses "else clause not last"))
+                (%error 'expand-clauses "else clause not last"))
             (make-if (cond-predicate first)
                      (sequence->exp (cond-actions first))
                      (expand-clauses rest))))))
@@ -391,7 +401,7 @@
         ((llvm-instruction? exp) (compile-llvm-instruction exp c-t-env))
         ((llvm-definition? exp)  (compile-llvm-definition exp c-t-env))
         ((application? exp)      (compile-application exp c-t-env))
-        (else                    (error 'compile "Unknown expression type"))))
+        (else                    (%error 'compile "Unknown expression type"))))
 
 (define (compile-self-evaluating exp c-t-env)
   (if (and (eq? c-t-env 'llvm-function) (number? exp))
@@ -421,14 +431,14 @@
                    (compiled-code c1) (compiled-code c2)
                    (llvm-call target 'cons 
                               (compiled-target c1) (compiled-target c2)))))
-               (else (error 'self-eval "not implemented")))))))
+               (else (%error 'self-eval "not implemented")))))))
 
 (define (compile-variable exp c-t-env)
   (if (eq? c-t-env 'llvm-function)
       (make-code (llvm-repr exp) '())
       (let ((target (make-var)) 
             (c-t-pos (find-var exp c-t-env 0)))
-    (if (null? c-t-pos) (error exp "not found")
+    (if (null? c-t-pos) (%error exp "not found")
         (make-code target (llvm-call target 'lookup-variable 'env
                                          (car c-t-pos) (cdr c-t-pos)))))))
 
@@ -440,7 +450,7 @@
                     (compile-named-lambda (definition-value exp) c-t-env (definition-variable exp)))
                  (else 
                     (compile (definition-value exp) c-t-env)))))
-    (if (null? c-t-pos) (error 'compile-assignment "not found")
+    (if (null? c-t-pos) (%error 'compile-assignment "not found")
     (make-code
          target 
          (compiled-code value)
@@ -502,7 +512,7 @@
           (add-llvm-function f-name '(env) seq-code)
           (make-code 
            target
-           (llvm-call t1 'make-env (length seq-defines) 'env)
+           (llvm-call t1 'make-env (%length seq-defines) 'env)
            (llvm-call target f-name t1))))))
 
 (define (compile-lambda-with-name exp c-t-env f-name)
@@ -517,7 +527,7 @@
      (llvm-ptrtoint t1 "i64 (i64)*" f-name "i64")
      (llvm-call target 'make-function t1 'env 
                 (if (lambda-arbitrary-args? exp)
-                    (length (lambda-parameters exp))
+                    (%length (lambda-parameters exp))
                     0)))))
 
 (define (compile-lambda exp c-t-env)
@@ -618,7 +628,7 @@
          target
          (compiled-code proc-code)
          (llvm-call f-env 'get-function-env (compiled-target proc-code))
-         (llvm-call call-env 'make-env (length (operands exp)) f-env)
+         (llvm-call call-env 'make-env (%length (operands exp)) f-env)
          (llvm-call f-func 'get-function-func (compiled-target proc-code))
          (llvm-inttoptr func "i64" f-func "i64 (i64)*")
          (build-param-list call-env operand-codes 1)
@@ -1108,7 +1118,8 @@ define fastcc i64 @main(i32 %argc, i8** %argv) {
          llvm-function-list))
   0)
 
+#+nil
 (compiler (list (read)))
 
 
-)
+;;;;)
