@@ -2,4 +2,4 @@
   :depends-on (#:scheme2common-lisp)
   :serial t
   :components
-  ((:file "scheme2llvm.lisp")))
+  ((:file "scheme2llvm")))
