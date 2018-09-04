@@ -1,6 +1,6 @@
 (in-package #:scheme2llvm)
 
-(defun read-ir-into-module (expression module)
+(defun read-ir-into-module (expression)
   (declare (optimize (debug 3)))
   (let ((code 
 	 (with-output-to-string (stream)
@@ -13,14 +13,24 @@
 		foreign-string
 		(length code)
 		name)))))
-      (cffi:with-foreign-object (foo :pointer 1)	
-	(llvm::-parse-i-r-in-context (llvm::-get-global-context)
-				     memory-buffer
-				     module
-				     foo)
-	(k-shared::with-llvm-message (ptr) (cffi:mem-ref foo :pointer)
-	  (princ (cffi:foreign-string-to-lisp ptr))))     
-      (llvm::-dispose-memory-buffer memory-buffer))))
+      (let ((success nil))
+	(cffi:with-foreign-object (module-pointer '(:pointer llvm::|LLVMModuleRef|) 1)
+	  (cffi:with-foreign-object (foo :pointer 1)
+	    (setf success ;;;;FIXME ::LLVMBool is 0 on SUCCESS and 1 on failure
+		  (not (llvm::-parse-i-r-in-context (llvm::-get-global-context)
+						    memory-buffer
+						    module-pointer
+						    foo)))
+	    (unless success
+	      (k-shared::with-llvm-message (ptr) (cffi:mem-ref foo :pointer)
+		(format t "~%llvm parse failed:")
+		(princ (cffi:foreign-string-to-lisp ptr)))))
+	  (print 234234)
+	  ;;(llvm::-dispose-memory-buffer memory-buffer) ;;;FIXME::no disposal?
+	  (print 234234)
+	  (values
+	   (cffi:mem-ref module-pointer 'llvm::|LLVMModuleRef|)
+	   success))))))
 
 
 (defclass module ()
@@ -28,9 +38,15 @@
 	   :initarg :module)
    (function-pass-manager :accessor module.function-pass-manager
 			  :initarg :function-pass-manager)))
-(defun make-module (&optional name)
+(defun make-module (&key
+		      (name "no name")
+		      module)
   (multiple-value-bind (module function-pass-manager)
-      (%initialize-module-and-pass-manager name)
+      (if module
+	  (values
+	   module
+	   (%initialize-pass-manager module))
+	  (%initialize-module-and-pass-manager name))
     (make-instance 'module
 		   :module
 		   module
@@ -54,23 +70,29 @@
 		  (llvm::-module-create-with-name str))))
     (values
      module
-     (let ((fpm (llvm::-create-function-pass-manager-for-module module)))
-       (llvm::-add-promote-memory-to-register-pass fpm)
-       (llvm::-add-instruction-combining-pass fpm)
-       (llvm::-add-reassociate-pass fpm)
-       (llvm::-add-g-v-n-pass fpm)
-       (llvm::-add-c-f-g-simplification-pass fpm)
-       (llvm::-initialize-function-pass-manager fpm)
-       fpm))))
+     (%initialize-pass-manager module))))
+
+(defun %initialize-pass-manager (module)
+  (let ((fpm (llvm::-create-function-pass-manager-for-module module)))
+    (llvm::-add-promote-memory-to-register-pass fpm)
+    (llvm::-add-instruction-combining-pass fpm)
+    (llvm::-add-reassociate-pass fpm)
+    (llvm::-add-g-v-n-pass fpm)
+    (llvm::-add-c-f-g-simplification-pass fpm)
+    (llvm::-initialize-function-pass-manager fpm)
+    fpm))
 
 
 (defun bar (expression)
   (k-shared::with-kaleidoscope-jit
-    (let ((module-object (make-module "wow")))
+    (let ((module-object
+	   (make-module :module
+			(read-ir-into-module expression))))
       (unwind-protect
 	   (with-slots (module) module-object
-	     (read-ir-into-module expression module)
-	     (k-shared::dump-module module))
+	     
+	     (k-shared::dump-module module)
+	     (%bar module))
 	(dispose-module module-object)))))
 
 
